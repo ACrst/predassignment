@@ -1,0 +1,116 @@
+---
+title: "PredictionAssignment"
+author: "ACrst"
+date: "24 April 2019"
+output:
+  html_document:
+    keep_md: yes
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(AppliedPredictiveModeling)
+library(caret)
+library(rattle)
+library(rpart.plot)
+library(randomForest)
+```
+
+
+Synopsis:
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+
+
+
+
+Data Load
+```{r echo=TRUE }
+dtraining<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+dtesting<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+str(dtraining)
+str(dtesting)
+```
+
+The training data set is made of 19622 observations on 160 columns. As we can see that there are many columns with NAs or blank values, so we will remove them by cleaning the data.
+
+
+Data clean
+```{r echo=TRUE}
+
+ColsToRemove<-which(colSums(is.na(dtraining)|dtraining=="")>0.9*dim(dtraining)[1])
+CleanTraining<-dtraining[,-ColsToRemove]
+CleanTraining<-CleanTraining[,-c(1:7)]
+dim(CleanTraining)
+
+ColsToRemove<-which(colSums(is.na(dtesting)|dtesting=="")>0.9*dim(dtesting)[1])
+CleanTesting<-dtesting[,-ColsToRemove]
+CleanTesting<-CleanTesting[,-1]
+dim(CleanTesting)
+```
+
+After cleaning the training data set, the cleaned training data set has only 53 columns.
+We now partition the training data set.
+
+```{r echo=TRUE}
+set.seed(12345)
+inTrain1<-createDataPartition(CleanTraining$classe,p=0.75,list=FALSE)
+Train1<-CleanTraining[inTrain1,]
+Test1<-CleanTraining[-inTrain1,]
+dim(Train1)
+dim(Test1)
+```
+
+We will now use three different models: Classification Tree, Random Forests nad Gradient Boosting Method.
+In order to limit the effects of overfitting and improve the efficiency of the models, we will use cross-validation techniques. For this we will use the k-folds technique.
+
+##Train with Classification Tree
+```{r echo=TRUE}
+trControl<-trainControl(method="cv",number=5)
+modCT<-train(classe~.,data=Train1,method="rpart",trControl=trControl)
+fancyRpartPlot(modCT$finalModel)
+
+trainPred<-predict(modCT, newdata=Test1)
+cMatrix<-confusionMatrix(Test1$classe,trainPred)
+cMatrix$overall['Accuracy']
+```
+
+From this, we observe that the accuracy of this model is about 54.1%. This means that the outcome class will not be predicted very well by the other predictors.
+
+##Train with Random Forests
+```{r echo=TRUE}
+modRF<-train(classe~.,data=Train1,method="rf",trControl=trControl,verbose=FALSE)
+print(modRF)
+plot(modRF,main="Accuracy of Random Forest model by number of predictors")
+trainPredRF<-predict(modRF,newdata=Test1)
+cMatrixRF<-confusionMatrix(Test1$classe,trainPredRF)
+cMatrixRF$table
+cMatrixRF$overall['Accuracy']
+modRF$finalModel$classes
+plot(modRF$finalModel,main="Model error of Random Forest model by number of trees")
+MostImpVars<-varImp(modRF)
+MostImpVars
+```
+
+With Random Forest, we obtain an accuracy of 99.28%using cross-validation of 5 steps i.e., k=5. This is one of the best accuracy. We can also notice that the number  of predictors giving the highest accuracy is 27. There is no significant increase of the accuracy with 2 predictors and 27, but the slope decreases more with more than 27 predictors. The fact that  not all the accuracy is worse with all the available predictors suggests that the variables may have certain dependencies between them.
+
+##Train with gradient boosting method
+```{r  echo=TRUE}
+modGBM<-train(classe~.,data=Train1,method="gbm",trControl=trControl,verbose=FALSE)
+print(modGBM)
+plot(modGBM)
+trainPredGBM<-predict(modGBM,newdata=Test1)
+cMatrixGBM<-confusionMatrix(Test1$classe,trainPredGBM)
+cMatrixGBM$table
+cMatrix$overall['Accuracy']
+```
+The accuracy for the GBM model is about 95.9%.
+
+Conclusion:
+This shows us that the random forest model is the best one that we can use out of the three models. We will now use it to predict the values of 'classe' in the test data set
+
+```{r echo=TRUE}
+FinalTestPred<-predict(modRF,newdata=CleanTesting)
+FinalTestPred
+```
